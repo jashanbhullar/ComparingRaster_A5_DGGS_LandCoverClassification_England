@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import time
 from pathlib import Path
 
 import rasterio
@@ -12,6 +13,12 @@ from pystac_client import Client
 from . import config
 from .aoi import load_aoi
 from .io import atomic
+
+# requests.exceptions.ConnectionError wraps urllib3's ProtocolError, which is how
+# a mid-stream "Connection broken: IncompleteRead" surfaces.
+_RETRYABLE_ERRORS = (requests.exceptions.RequestException, OSError)
+_MAX_ATTEMPTS = 4
+_RETRY_BACKOFF_S = 5
 
 
 def _manifest_rows(path: Path) -> list[dict[str, str]]:
@@ -57,6 +64,36 @@ def discover_manifest(aoi: str = config.AOI_NAME, *, force: bool = False) -> Pat
     return path
 
 
+def _is_readable_geotiff(path: Path) -> bool:
+    """Open the file and force a full-band read so truncated bodies raise, not just bad headers."""
+    try:
+        with rasterio.open(path) as src:
+            src.read(1)
+        return True
+    except (rasterio.RasterioIOError, OSError):
+        return False
+
+
+def _download_once(session: requests.Session, href: str, target: Path) -> None:
+    """Stream `href` to an atomic temp file, verifying the byte count when known."""
+    with session.get(href, stream=True, timeout=300) as response:
+        response.raise_for_status()
+        expected = response.headers.get("Content-Length")
+        expected_bytes = int(expected) if expected is not None else None
+        with atomic(target) as tmp:
+            written = 0
+            with tmp.open("wb") as fh:
+                for chunk in response.iter_content(chunk_size=1 << 20):
+                    if chunk:
+                        fh.write(chunk)
+                        written += len(chunk)
+            if expected_bytes is not None and written != expected_bytes:
+                raise OSError(
+                    f"truncated download for {target.name}: "
+                    f"got {written} bytes, expected {expected_bytes}"
+                )
+
+
 def download_assets(
     period: str = config.PERIOD,
     *,
@@ -80,20 +117,31 @@ def download_assets(
         tile = item_id.split("_", 1)[0]
         target = config.band_path(tile, period, row["asset_key"])
         if target.exists() and not force:
-            try:
-                with rasterio.open(target):
-                    downloaded.append(target)
-                    continue
-            except rasterio.RasterioIOError:
-                target.unlink()
+            if _is_readable_geotiff(target):
+                downloaded.append(target)
+                continue
+            target.unlink()
 
-        with session.get(row["asset_href"], stream=True, timeout=300) as response:
-            response.raise_for_status()
-            with atomic(target) as tmp:
-                with tmp.open("wb") as fh:
-                    for chunk in response.iter_content(chunk_size=1 << 20):
-                        if chunk:
-                            fh.write(chunk)
+        last_error: Exception | None = None
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                _download_once(session, row["asset_href"], target)
+                last_error = None
+                break
+            except _RETRYABLE_ERRORS as exc:
+                last_error = exc
+                print(f"retry {target.name}: attempt {attempt}/{_MAX_ATTEMPTS} failed ({exc})")
+                if attempt < _MAX_ATTEMPTS:
+                    time.sleep(_RETRY_BACKOFF_S * attempt)
+        if last_error is not None:
+            raise RuntimeError(
+                f"failed to download {target.name} after {_MAX_ATTEMPTS} attempts"
+            ) from last_error
+
+        if not _is_readable_geotiff(target):
+            target.unlink()
+            raise RuntimeError(f"downloaded {target.name} but it is not a readable GeoTIFF")
+
         downloaded.append(target)
         print(f"build {target.name}")
     print(f"sentinel: {len(downloaded)} asset(s) ready for {period}")
