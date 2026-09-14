@@ -1,0 +1,6 @@
+data/
+.ruff_cache 
+.venv/
+.DS_Store
+**/.tmp
+**/__pycache__/

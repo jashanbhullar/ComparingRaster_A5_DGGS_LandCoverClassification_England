@@ -1,0 +1,37 @@
+[project]
+name = "msc-thesis-dggs"
+version = "0.1.0"
+description = "Land cover classification on a raster grid vs the A5 DGGS"
+requires-python = ">=3.13"
+dependencies = [
+    "duckdb>=1.1",
+    "geopandas>=1.0",
+    "shapely>=2.0",
+    "pyproj>=3.6",
+    "rasterio>=1.4",
+    "pyarrow>=17",
+    "pandas>=2.2",
+    "numpy>=2.0",
+    "scikit-learn>=1.5",
+    "joblib>=1.4",
+    "requests>=2.32",
+    "pystac-client>=0.8",
+    "tqdm>=4.66",
+    "matplotlib>=3.9",
+    "folium>=0.17",
+    "jupyterlab>=4.2",
+    "ipykernel>=6.29",
+    "scipy>=1.18.1",
+]
+
+[dependency-groups]
+dev = ["pytest>=9.1.1", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
