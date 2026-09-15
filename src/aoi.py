@@ -1,4 +1,4 @@
-"""AOI boundaries, extracted from the local OSM extract (no network fetch)."""
+"""AOI boundaries from a checked-in GeoJSON or local geospatial sources."""
 
 from __future__ import annotations
 
@@ -47,12 +47,17 @@ def _extract_lsoa(prefix: str, out_path: Path) -> None:
 
 
 def load_aoi(aoi: str = config.AOI_NAME, *, force: bool = False) -> gpd.GeoDataFrame:
-    """Return the dissolved AOI polygon in EPSG:4326, built once from the local sources."""
+    """Return the dissolved AOI polygon in EPSG:4326, built from the configured source."""
     kind, key = config.AOI_SOURCE[aoi]
-    raw = config.BOUNDARIES / f"{aoi}_{kind}.gpkg"
+    raw = Path(key) if kind == "geojson" else config.BOUNDARIES / f"{aoi}_{kind}.gpkg"
 
     def build() -> gpd.GeoDataFrame:
         if not raw.exists():
+            if kind == "geojson":
+                raise FileNotFoundError(
+                    f"AOI GeoJSON is missing: {raw}. "
+                    "Add the small AOI boundary file before running the pipeline."
+                )
             raw.parent.mkdir(parents=True, exist_ok=True)
             if kind == "osm":
                 _extract_relation(int(key), raw)

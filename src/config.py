@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
+
 # --- AOI ladder: london -> england -> uk. Change only this to scale up. -------
 AOI_NAME = "london"
 
@@ -13,12 +15,11 @@ AOI_OSM_RELATION = {
     "uk": 62149,
 }
 
-# Where each AOI boundary comes from. OSM administrative relations follow the
-# maritime limit, so England is taken from the coastline-clipped ONS LSOA layer
-# instead ("E" prefix); the OSM relation would include ~28% sea.
+# Where each AOI boundary comes from. Both public AOIs are small checked-in
+# GeoJSON files, so a run does not require a large OSM or LSOA source dataset.
 AOI_SOURCE = {
-    "london": ("osm", 175342),
-    "england": ("lsoa", "E"),
+    "london": ("geojson", ROOT / "aoi" / "london.geojson"),
+    "england": ("geojson", ROOT / "aoi" / "england.geojson"),
     "uk": ("lsoa", ""),
 }
 
@@ -130,7 +131,6 @@ TEST_FRACTION = 0.25
 EXCLUDE_CLASSES: set[int] = set()
 
 # --- Paths -------------------------------------------------------------------
-ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 
 RAW = DATA / "raw"

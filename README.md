@@ -18,7 +18,7 @@ Large input datasets, downloaded source imagery, generated intermediate files, m
 ## Folder structure
 
 ```text
-publicly-shared/
+ComparingRaster_A5_DGGS_LandCoverClassification_England/
 ├── README.md
 ├── folder_structure.txt
 ├── pyproject.toml
@@ -47,8 +47,10 @@ publicly-shared/
 - Python 3.13 or a compatible version supported by `pyproject.toml`.
 - `uv` for environment and dependency management.
 - GDAL/rasterio-compatible system libraries.
+- GDAL command-line tools (`gdalbuildvrt` and `gdalwarp`) for raster stages.
 - Quarto and a LaTeX installation only if the separate thesis document is being built.
-- Access to the required Sentinel-2, WorldCover, boundary, and A5 extension resources.
+- Network access for the Sentinel-2 STAC catalogue, Sentinel-2 assets, and ESA WorldCover.
+- Network access on first use so DuckDB can install the `spatial` and community `a5` extensions.
 
 ## Setup
 
@@ -68,6 +70,17 @@ Run formatting and lint checks:
 uv run ruff check src tests
 ```
 
+## Required local input
+
+The London and England configurations use small checked-in boundary files at
+`aoi/london.geojson` and `aoi/england.geojson`. Each must contain a polygon or
+multipolygon with CRS metadata; the pipeline converts it to EPSG:4326. No OSM
+PBF, LSOA GeoPackage, Sentinel imagery, or WorldCover raster needs to be placed
+in `data/` for these runs.
+
+The UK configuration still uses an ONS LSOA GeoPackage at
+`data/raw/lsoa_uk.gpkg` unless its source is changed in `src/config.py`.
+
 ## Public demo run
 
 The lightweight public demo runs the A5 coordinate-order regression test and does
@@ -77,22 +90,24 @@ not require the large geospatial datasets:
 uv run pytest tests/test_a5.py
 ```
 
-The complete England pipeline is a data-backed run rather than a small demo. It
-requires the source imagery, reference labels, boundaries, external DuckDB A5
-resources, and substantial storage. Once those inputs are available, run:
+The complete pipeline is a data-backed run rather than a small demo. It requires
+network access and substantial storage; downloaded imagery and generated
+artefacts are checkpointed under `data/` and reused on later runs. For London,
+run:
 
 ```bash
-uv run python -m src.pipeline --aoi england --levels 18
+uv run python -m src.pipeline --aoi london --levels 18
 ```
 
 The pipeline discovers the configured AOI's Sentinel-2 assets from the Earth
-Genome STAC catalogue, writes `data/raw/sentinel/sentinel_downloads.txt`, and
-downloads the 12 configured bands for the selected period. Downloads are
-resumable and written atomically. To prepare imagery without running later
+Genome STAC catalogue using the AOI GeoJSON, writes
+`data/raw/sentinel/sentinel_downloads.txt`, and downloads the 12 configured
+bands for the selected period. Downloads are resumable and written atomically.
+To prepare imagery without running later
 stages, use:
 
 ```bash
-uv run python -m src.download --aoi england
+uv run python -m src.download --aoi london
 ```
 
 The first run requires network access and enough storage for the source
