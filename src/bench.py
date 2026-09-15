@@ -43,14 +43,17 @@ def run(aoi: str = config.AOI_NAME, *, force: bool = False) -> dict:
 
     def build() -> dict:
         con = a5.connect()
+        from .aoi import load_aoi
+
+        aoi_geometry = load_aoi(aoi).geometry.iloc[0]
+        representative_point = aoi_geometry.representative_point()
         level = config.A5_LEVEL
         root = config.a5_dataset(level, aoi).as_posix()
         src_a5 = f"read_parquet('{root}/**/*.parquet', hive_partitioning=1)"
         mosaic = config.mosaic_vrt(aoi=aoi)
         out: dict = {"level": level, "queries": {}}
 
-        # A representative point in central London.
-        lon, lat = -0.1281, 51.5080
+        lon, lat = representative_point.x, representative_point.y
         cell = int(a5.lonlat_to_cell(np.array([lon]), np.array([lat]), level)[0])
 
         t_a5, _ = _time(
@@ -78,13 +81,8 @@ def run(aoi: str = config.AOI_NAME, *, force: bool = False) -> dict:
         t_r, _ = _time(raster_window)
         out["queries"]["neighbourhood"] = {"a5_s": t_a5, "raster_s": t_r, "n_cells": len(ring)}
 
-        # Zonal statistics over one LSOA polygon.
-        import geopandas as gpd
-
-        from .aoi import load_aoi
-
-        lsoa = gpd.read_file(config.LSOA_GPKG, rows=200, columns=["geometry"]).to_crs(config.CRS)
-        poly = lsoa[lsoa.intersects(load_aoi(aoi).geometry.iloc[0])].geometry.iloc[0]
+        # Zonal statistics over the configured AOI polygon.
+        poly = aoi_geometry
 
         def zonal_a5():
             # a5_geometry_to_cells returns only the polygon's boundary cells, so
@@ -103,7 +101,7 @@ def run(aoi: str = config.AOI_NAME, *, force: bool = False) -> dict:
 
         t_a5, _ = _time(zonal_a5, repeats=2)
         t_r, _ = _time(zonal_raster, repeats=2)
-        out["queries"]["zonal_lsoa"] = {"a5_s": t_a5, "raster_s": t_r}
+        out["queries"]["zonal_aoi"] = {"a5_s": t_a5, "raster_s": t_r}
 
         # Full-dataset aggregate: mean NIR per reference class.
         t_a5, _ = _time(
